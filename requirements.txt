@@ -1,0 +1,29 @@
+# Core processing
+ffmpeg-python
+opencv-python
+numpy
+
+# AI/ML
+openai-whisper
+torch
+torchaudio
+
+# Video analysis
+scenedetect[opencv]
+
+# Embeddings
+sentence-transformers
+
+# VLM APIs
+google-generativeai
+anthropic
+openai
+
+# UI
+gradio
+
+# Utils
+jinja2
+Pillow
+tqdm
+python-dotenv

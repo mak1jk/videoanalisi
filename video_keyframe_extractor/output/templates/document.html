@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Video Summary</title>
+    <link rel="stylesheet" href="{{ css_path }}">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>{{ title }}</h1>
+            <p class="meta">Analisi generata automaticamente da Video Keyframe Extractor</p>
+        </header>
+
+        {% for seg in segments %}
+        <section class="segment">
+            <div class="segment-header">
+                <h2 class="segment-title">{{ seg.title }}</h2>
+                <span class="timestamp">{{ "%.0f"|format(seg.start) }}s - {{ "%.0f"|format(seg.end) }}s</span>
+            </div>
+
+            <div class="segment-content">
+                <div class="text-content">
+                    {{ seg.text }}
+                </div>
+
+                <div class="visual-content">
+                    {% if seg.keyframe and seg.keyframe.relative_path %}
+                    <img src="{{ seg.keyframe.relative_path }}" alt="Keyframe for {{ seg.title }}" class="keyframe-img"
+                        onclick="openLightbox(this.src)">
+                    {% else %}
+                    <div class="no-image">Nessun frame rilevante selezionato</div>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+
+    <div class="lightbox" id="lightbox" onclick="this.style.display='none'">
+        <img id="lightbox-img" src="">
+    </div>
+
+    <script>
+        function openLightbox(src) {
+            document.getElementById('lightbox-img').src = src;
+            document.getElementById('lightbox').style.display = 'flex';
+        }
+    </script>
+</body>
+
+</html>
