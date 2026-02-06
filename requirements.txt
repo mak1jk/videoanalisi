@@ -15,9 +15,12 @@ scenedetect[opencv]
 sentence-transformers
 
 # VLM APIs
-google-generativeai
+google-genai
+google-cloud-storage
 anthropic
 openai
+
+yt-dlp
 
 # UI
 gradio

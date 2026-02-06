@@ -1,0 +1,19 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Environments
+venv/
+
+# Local config
+.env
+
+# Generated outputs
+output_documents/
+temp_processing/
+*.zip
+
+# Logs
+app.log

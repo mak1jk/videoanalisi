@@ -1,24 +1,33 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
 
 class VLMProvider(ABC):
     @abstractmethod
     def get_available_models(self) -> List[str]:
         """Returns a list of available model names."""
-        pass
 
     @abstractmethod
-    def analyze_image_text(self, text_segment: str, image_paths: List[str], prompt: str) -> Optional[int]:
-        """
-        Analyzes text and images to select the best matching image.
-        Returns the index of the best image in image_paths, or None if no image is relevant.
-        """
-        pass
+    def analyze_image_text(
+        self, text_segment: str, image_paths: List[str], prompt: Optional[str] = None
+    ) -> Optional[int]:
+        """Selects the best matching image index for a text segment."""
 
     @abstractmethod
     def segment_text(self, full_transcript: str) -> str:
-        """
-        Uses the LLM to segment the raw transcript into logical sections.
-        Returns a JSON string structure.
-        """
-        pass
+        """Segments a transcript into logical sections and returns JSON (string)."""
+
+    def supports_video_timeline(self) -> bool:
+        return False
+
+    def analyze_video_timeline(
+        self,
+        video_uri: str,
+        *,
+        max_events: int,
+        mime_type: str = "video/mp4",
+        prompt: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        raise NotImplementedError(
+            "This provider does not support video timeline analysis."
+        )
