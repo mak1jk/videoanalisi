@@ -12,8 +12,6 @@ class AudioExtractor:
         Returns the path to the extracted audio file.
         """
         base_name = os.path.splitext(os.path.basename(video_path))[0]
-        output_path = os.path.join(self.output_dir, from_video_name=f"{base_name}.wav")
-        # Removing from_video_name= part since os.path.join doesn't take keyword args, fixing it below
         output_path = os.path.join(self.output_dir, f"{base_name}.wav")
 
         print(f"Extracting audio to {output_path}...")
@@ -28,5 +26,5 @@ class AudioExtractor:
             )
             return output_path
         except ffmpeg.Error as e:
-            print("FFmpeg error:", e.stderr.decode('utf8'))
-            raise e
+            stderr = e.stderr.decode("utf8", errors="replace") if e.stderr else str(e)
+            raise RuntimeError(f"FFmpeg audio extraction failed: {stderr}") from e

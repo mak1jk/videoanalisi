@@ -12,6 +12,7 @@ class OpenRouterProvider(VLMProvider):
         self.api_key = Config.OPENROUTER_API_KEY
         self.model_name = model_name
         self.base_url = "https://openrouter.ai/api/v1"
+        self.timeout = (10, 120)
 
     def get_available_models(self) -> List[str]:
         """Fetch available vision models from OpenRouter API."""
@@ -29,56 +30,38 @@ class OpenRouterProvider(VLMProvider):
             response = requests.get(
                 url=f"{self.base_url}/models",
                 headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=self.timeout,
             )
+            response.raise_for_status()
+            data = response.json()
+            models = data.get("data", [])
 
-            if response.status_code == 200:
-                data = response.json()
-                models = data.get("data", [])
-
-                # Filtra solo i modelli che supportano vision (hanno 'vision' nelle capabilities)
-                vision_models = []
-                for model in models:
-                    model_id = model.get("id", "")
-                    # Includi modelli noti per supportare vision
-                    if any(
-                        keyword in model_id.lower()
-                        for keyword in [
-                            "vision",
-                            "gpt-4o",
-                            "claude",  # Include tutti i Claude (3, 3.5, 3.7, 4, etc.)
-                            "gemini",
-                            "llava",
-                            "llama-3.2",
-                            "qwen",
-                            "pixtral",
-                            "deepseek",
-                        ]
-                    ):
-                        vision_models.append(model_id)
-
-                # Se non troviamo modelli vision, usa il fallback
-                if not vision_models:
-                    print(
-                        "Warning: No vision models found in OpenRouter, using fallback"
-                    )
-                    return [
-                        "google/gemini-flash-1.5",
-                        "google/gemini-pro-1.5",
-                        "anthropic/claude-3.5-sonnet",
-                        "openai/gpt-4o-mini",
-                        "meta-llama/llama-3.2-11b-vision-instruct",
+            # Filtra solo i modelli che supportano vision (hanno 'vision' nelle capabilities)
+            vision_models = []
+            for model in models:
+                model_id = model.get("id", "")
+                # Includi modelli noti per supportare vision
+                if any(
+                    keyword in model_id.lower()
+                    for keyword in [
+                        "vision",
+                        "gpt-4o",
+                        "claude",  # Include tutti i Claude (3, 3.5, 3.7, 4, etc.)
+                        "gemini",
+                        "llava",
+                        "llama-3.2",
+                        "qwen",
+                        "pixtral",
+                        "deepseek",
                     ]
+                ):
+                    vision_models.append(model_id)
 
-                # Ordina alfabeticamente
-                vision_models.sort()
-                print(f"Fetched {len(vision_models)} vision models from OpenRouter")
-                # Debug: mostra tutti i modelli claude trovati
-                claude_models = [m for m in vision_models if "claude" in m.lower()]
-                if claude_models:
-                    print(f"Claude models found: {claude_models}")
-                return vision_models
-            else:
-                print(f"Error fetching OpenRouter models: {response.status_code}")
+            # Se non troviamo modelli vision, usa il fallback
+            if not vision_models:
+                print(
+                    "Warning: No vision models found in OpenRouter, using fallback"
+                )
                 return [
                     "google/gemini-flash-1.5",
                     "google/gemini-pro-1.5",
@@ -86,6 +69,15 @@ class OpenRouterProvider(VLMProvider):
                     "openai/gpt-4o-mini",
                     "meta-llama/llama-3.2-11b-vision-instruct",
                 ]
+
+            # Ordina alfabeticamente
+            vision_models.sort()
+            print(f"Fetched {len(vision_models)} vision models from OpenRouter")
+            # Debug: mostra tutti i modelli claude trovati
+            claude_models = [m for m in vision_models if "claude" in m.lower()]
+            if claude_models:
+                print(f"Claude models found: {claude_models}")
+            return vision_models
 
         except Exception as e:
             print(f"Error fetching OpenRouter models: {e}")
@@ -137,14 +129,14 @@ class OpenRouterProvider(VLMProvider):
                     "Authorization": f"Bearer {self.api_key}",
                     "HTTP-Referer": "https://github.com/wonderwall/videoanalisi",  # Optional
                 },
-                data=json.dumps(
-                    {
-                        "model": self.model_name,
-                        "messages": [{"role": "user", "content": content}],
-                        "response_format": {"type": "json_object"},
-                    }
-                ),
+                json={
+                    "model": self.model_name,
+                    "messages": [{"role": "user", "content": content}],
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=self.timeout,
             )
+            response.raise_for_status()
 
             result = response.json()
             response_text = result["choices"][0]["message"]["content"]
@@ -172,22 +164,22 @@ class OpenRouterProvider(VLMProvider):
             response = requests.post(
                 url=f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                data=json.dumps(
-                    {
-                        "model": self.model_name,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "You are a video analysis expert. Output ONLY raw JSON.",
-                            },
-                            {
-                                "role": "user",
-                                "content": f"{prompt}\n\nTranscript: {full_transcript}",
-                            },
-                        ],
-                    }
-                ),
+                json={
+                    "model": self.model_name,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a video analysis expert. Output ONLY raw JSON.",
+                        },
+                        {
+                            "role": "user",
+                            "content": f"{prompt}\n\nTranscript: {full_transcript}",
+                        },
+                    ],
+                },
+                timeout=self.timeout,
             )
+            response.raise_for_status()
             return response.json()["choices"][0]["message"]["content"]
         except Exception as e:
             print(f"OpenRouter Segmentation Error: {e}")

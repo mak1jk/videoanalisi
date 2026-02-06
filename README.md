@@ -9,6 +9,9 @@ Un tool Python che estrae automaticamente i frame più rilevanti da video educat
 - **🧠 Segmentazione Semantica**: Divide la trascrizione in sezioni logiche usando LLM
 - **🎯 Selezione VLM**: Utilizza modelli Vision-Language (Gemini, Claude, GPT-4) per selezionare i frame migliori
 - **📄 Output HTML Interattivo**: Genera documenti HTML con testo e immagini inline, navigabili e responsive
+- **🛡️ Rendering Sicuro HTML**: Escape automatico del contenuto testuale nel report finale
+- **🌐 Networking più robusto**: Timeout e gestione errori HTTP esplicita su integrazione OpenRouter
+- **🎞️ Gestione FPS difensiva**: Validazione FPS per evitare crash su video malformati
 
 ## 🚀 Installazione
 
@@ -235,10 +238,18 @@ Video Input
 
 ## ⚡ Ottimizzazioni
 
-- **Lazy Loading**: Modelli AI caricati solo quando necessario
-- **Caching**: I modelli rimangono in memoria per riutilizzo
-- **Batch Processing**: Frame processati in batch per efficienza
-- **Gestione Errori**: Robusta gestione di video corrotti o frame invalidi
+- **Video-native su Vertex**: Chunking automatico per video lunghi con overlap configurabile
+- **Deduplica frame**: Filtraggio CLIP per ridurre ridondanza prima della selezione VLM
+- **Batch embedding**: Encoding immagini in batch nel selettore candidati
+- **Hardening I/O**: timeout HTTP, `raise_for_status`, validazione FPS e errori FFmpeg espliciti
+
+## ✅ Test
+
+Esegui la suite minima di regressione:
+
+```bash
+./venv/bin/python -m unittest discover -s tests -v
+```
 
 ## 🐛 Troubleshooting
 

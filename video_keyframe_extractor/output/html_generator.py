@@ -1,4 +1,4 @@
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 import os
 import shutil
 
@@ -9,7 +9,10 @@ class HTMLGenerator:
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Setup Jinja2 env
-        self.env = Environment(loader=FileSystemLoader(self.template_dir))
+        self.env = Environment(
+            loader=FileSystemLoader(self.template_dir),
+            autoescape=select_autoescape(["html", "xml"]),
+        )
 
     def generate_document(self, data: dict, project_name: str) -> str:
         """

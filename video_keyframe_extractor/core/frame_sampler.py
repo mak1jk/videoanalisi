@@ -1,6 +1,6 @@
 import cv2
 import os
-import numpy as np
+from typing import Optional
 
 class FrameSampler:
     def __init__(self, output_dir="temp_processing/frames"):
@@ -17,7 +17,11 @@ class FrameSampler:
             raise ValueError(f"Could not open video: {video_path}")
 
         fps = cap.get(cv2.CAP_PROP_FPS)
-        interval_frames = int(fps * interval_sec)
+        if not fps or fps <= 0:
+            cap.release()
+            raise ValueError(f"Invalid FPS ({fps}) for video: {video_path}")
+
+        interval_frames = max(1, int(fps * interval_sec))
         
         frames_data = []
         frame_idx = 0
@@ -46,12 +50,17 @@ class FrameSampler:
         cap.release()
         return frames_data
 
-    def get_frame_at_timestamp(self, video_path: str, timestamp: float) -> str:
+    def get_frame_at_timestamp(self, video_path: str, timestamp: float) -> Optional[str]:
         """
         Extracts a single frame at a specific timestamp.
         """
         cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return None
         fps = cap.get(cv2.CAP_PROP_FPS)
+        if not fps or fps <= 0:
+            cap.release()
+            return None
         frame_no = int(fps * timestamp)
         
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_no)
