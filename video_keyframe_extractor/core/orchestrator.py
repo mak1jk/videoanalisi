@@ -2,6 +2,7 @@ from typing import Dict
 import os
 from .audio_extractor import AudioExtractor
 from .transcriber import Transcriber
+from .groq_transcriber import GroqTranscriber
 from .frame_sampler import FrameSampler
 from .scene_detector import SceneDetector
 from .text_segmenter import TextSegmenter
@@ -14,21 +15,106 @@ from ..config import Config
 
 
 class FrameSelectorOrchestrator:
-    def __init__(self, vlm_provider: VLMProvider):
+    def __init__(self, vlm_provider: VLMProvider, fast_mode: bool = False):
         self.vlm_provider = vlm_provider
-        self.audio_extractor = AudioExtractor()
-        # Initialize transcriber lazily or here? Here is fine.
-        self.transcriber = Transcriber()
+        self.fast_mode = fast_mode
         self.frame_sampler = FrameSampler()
-        self.scene_detector = SceneDetector()
+        self.audio_extractor = AudioExtractor()
 
-        # Initialize Embeddings/Candidate Selector
-        self.embeddings_model = EmbeddingsModel()
-        self.candidate_selector = CandidateSelector(
-            self.embeddings_model, similarity_threshold=Config.CLIP_SIMILARITY_THRESHOLD
+        # Groq transcriber available in both modes
+        self.groq_transcriber = None
+        if Config.GROQ_API_KEY:
+            self.groq_transcriber = GroqTranscriber(api_key=Config.GROQ_API_KEY)
+
+        if not fast_mode:
+            if self.groq_transcriber:
+                print("Using Groq Whisper transcriber (fast API)")
+                self.transcriber = self.groq_transcriber
+            else:
+                self.transcriber = Transcriber()
+            self.scene_detector = SceneDetector()
+            self.embeddings_model = EmbeddingsModel()
+            self.candidate_selector = CandidateSelector(
+                self.embeddings_model, similarity_threshold=Config.CLIP_SIMILARITY_THRESHOLD
+            )
+            self.text_segmenter = TextSegmenter(self.vlm_provider)
+
+    def process_video_fast(self, video_path: str) -> Dict:
+        """
+        Fast pipeline: upload video to Gemini Files API, get sections + keyframes in one call.
+        Also runs Groq Whisper for verbatim transcript per section.
+        """
+        results = {"video_path": video_path, "segments": []}
+
+        print("--- Fast Mode: Gemini Files API ---")
+        gemini_result = self.vlm_provider.upload_and_analyze_video(video_path)
+        sections = gemini_result.get("sections", [])
+        results["cost_info"] = gemini_result.get("cost_info", {})
+
+        if not sections:
+            print("Warning: No sections returned from Gemini.")
+            return results
+
+        # Groq Whisper transcription for verbatim text
+        whisper_segments = []
+        full_transcript = ""
+        if self.groq_transcriber:
+            print("--- Trascrizione audio con Groq Whisper ---")
+            audio_path = self.audio_extractor.extract_audio(video_path)
+            raw_transcript = self.groq_transcriber.transcribe(audio_path, language="it")
+            whisper_segments = [
+                s for s in raw_transcript.get("segments", [])
+                if s.get("text", "").strip()
+            ]
+            full_transcript = raw_transcript.get("text", "").strip()
+            if whisper_segments:
+                print(f"  {len(whisper_segments)} segmenti trascritti con timestamp.")
+            elif full_transcript:
+                print(f"  Trascrizione completa ottenuta ({len(full_transcript)} caratteri, senza timestamp segmento).")
+
+        print(f"--- Extracting {len(sections)} keyframes ---")
+
+        # Compute total video duration for proportional text split
+        total_duration = max(
+            (float(s.get("end_time", 0)) for s in sections), default=1.0
         )
 
-        self.text_segmenter = TextSegmenter(self.vlm_provider)
+        final_segments = []
+        for i, section in enumerate(sections):
+            keyframe_time = float(section.get("keyframe_time") or section.get("start_time", 0))
+            start = float(section.get("start_time", 0))
+            end = float(section.get("end_time", 0))
+
+            # Filter whisper segments overlapping this section
+            transcript_text = ""
+            if whisper_segments:
+                matching = [
+                    ws["text"].strip()
+                    for ws in whisper_segments
+                    if ws.get("end", 0) > start and ws.get("start", 0) < end
+                ]
+                transcript_text = " ".join(matching)
+            elif full_transcript and total_duration > 0:
+                # Fallback: proportional split of full text by section duration
+                chars_per_sec = len(full_transcript) / total_duration
+                char_start = int(start * chars_per_sec)
+                char_end = int(end * chars_per_sec)
+                transcript_text = full_transcript[char_start:char_end].strip()
+
+            print(f"  [{i+1}/{len(sections)}] '{section.get('title', '')}' @ {keyframe_time:.1f}s")
+            frame_path = self.frame_sampler.get_frame_at_timestamp(video_path, keyframe_time)
+            final_segments.append({
+                "title": section.get("title", "Untitled"),
+                "start": start,
+                "end": end,
+                "text": section.get("text", ""),
+                "transcript": transcript_text,
+                "tasks": section.get("tasks") or [],
+                "keyframe": {"path": frame_path, "timestamp": keyframe_time} if frame_path else None,
+            })
+
+        results["segments"] = final_segments
+        return results
 
     def process_video(self, video_path: str) -> Dict:
         """
@@ -105,7 +191,6 @@ class FrameSelectorOrchestrator:
                         "confidence": best_event.confidence,
                     }
                 else:
-                    # Fallback: sample the middle of the segment
                     fallback_ts = start + max(0.0, (end - start) / 2.0)
                     try:
                         frame_path = self.frame_sampler.get_frame_at_timestamp(

@@ -17,3 +17,10 @@ temp_processing/
 
 # Logs
 app.log
+app_startup.log
+
+# Videos
+*.mp4
+
+# WSL Zone Identifiers
+*:Zone.Identifier

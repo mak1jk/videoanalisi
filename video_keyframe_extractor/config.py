@@ -10,6 +10,7 @@ class Config:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
     # Vertex AI / Google Cloud
     USE_VERTEX_AI = os.getenv("USE_VERTEX_AI", "false").lower() in {"1", "true", "yes"}

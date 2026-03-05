@@ -37,6 +37,13 @@ h1 {
     font-size: 0.9rem;
 }
 
+.cost-info {
+    color: #94a3b8;
+    font-size: 0.8rem;
+    font-family: monospace;
+    margin-top: 0.5rem;
+}
+
 .segment {
     background: var(--card-bg);
     border-radius: 12px;
@@ -128,7 +135,197 @@ h1 {
     font-style: italic;
 }
 
-/* Lightbox (Simple implementation) */
+/* Tasks */
+.tasks-section {
+    padding-top: 1rem;
+    border-top: 1px dashed #e2e8f0;
+}
+
+.tasks-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 0 0 0.75rem 0;
+}
+
+.tasks-title::before {
+    content: "\2611  ";
+}
+
+.task-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    border-radius: 6px;
+    background: #f0f9ff;
+    border-left: 3px solid #93c5fd;
+    flex-wrap: wrap;
+}
+
+.task-priority-alta {
+    background: #fef2f2;
+    border-left-color: #f87171;
+}
+
+.task-priority-media {
+    background: #fffbeb;
+    border-left-color: #fbbf24;
+}
+
+.task-priority-bassa {
+    background: #f0fdf4;
+    border-left-color: #86efac;
+}
+
+.task-description {
+    flex: 1;
+    font-size: 0.95rem;
+    min-width: 200px;
+}
+
+.task-assignee {
+    font-size: 0.8rem;
+    background: #e0e7ff;
+    color: #3730a3;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.task-priority-badge {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    color: #64748b;
+}
+
+/* Transcript toggle */
+.transcript-toggle {
+    cursor: pointer;
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.5rem 0;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.transcript-toggle:hover {
+    text-decoration: underline;
+}
+
+.toggle-icon {
+    font-size: 0.7rem;
+    transition: transform 0.2s;
+}
+
+.transcript-content {
+    background: #f8fafc;
+    border-left: 3px solid #cbd5e1;
+    padding: 1rem 1.5rem;
+    margin-top: 0.5rem;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.95rem;
+    color: #475569;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* Video path input */
+.video-path-input {
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: left;
+}
+
+.video-path-input label {
+    font-size: 0.8rem;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.video-path-input input {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    color: #475569;
+    background: #f8fafc;
+}
+
+.video-path-input input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+/* Keyframe wrapper with play button */
+.keyframe-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.keyframe-wrapper .keyframe-img {
+    display: block;
+    width: 100%;
+}
+
+.play-btn {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(37, 99, 235, 0.85);
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, transform 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    padding-left: 3px;
+}
+
+.play-btn:hover {
+    background: rgba(37, 99, 235, 1);
+    transform: scale(1.1);
+}
+
+.play-btn-standalone {
+    border: 2px solid var(--primary-color);
+    background: white;
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.5rem 1.2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.play-btn-standalone:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+/* Image Lightbox */
 .lightbox {
     display: none;
     position: fixed;
@@ -146,4 +343,50 @@ h1 {
     max-width: 90%;
     max-height: 90%;
     border-radius: 4px;
+}
+
+/* Video Lightbox */
+.video-lightbox {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.92);
+    justify-content: center;
+    align-items: center;
+}
+
+.video-lightbox-inner {
+    position: relative;
+    max-width: 90%;
+    max-height: 90%;
+}
+
+.video-lightbox video {
+    max-width: 90vw;
+    max-height: 85vh;
+    border-radius: 8px;
+    background: black;
+}
+
+.video-close-btn {
+    position: absolute;
+    top: -16px;
+    right: -16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: #ef4444;
+    color: white;
+    font-size: 1.4rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    line-height: 1;
 }

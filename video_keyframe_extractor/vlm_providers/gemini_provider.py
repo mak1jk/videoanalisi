@@ -1,5 +1,10 @@
 import json
+import math
 import os
+import re
+import subprocess
+import tempfile
+import time
 from typing import Any, Dict, List, Optional
 
 from google import genai
@@ -7,6 +12,10 @@ from google.genai import types
 
 from .base import VLMProvider
 from ..config import Config
+
+# Gemini Files API: ~263 tokens/sec at default resolution.
+# 1M token limit → max ~3800 sec safe. We use 1700s chunks with margin.
+_MAX_CHUNK_SECONDS = 1700
 
 
 class GeminiProvider(VLMProvider):
@@ -115,68 +124,296 @@ Output strictly a JSON object:
 
     def segment_text(self, full_transcript: str) -> str:
         prompt = """
-You are an expert video editor and content creator.
-I will provide you with a raw transcript of a video, including timestamps.
-Your task is to segment this transcript into logical sections (slides/topics).
+Sei un esperto video editor e creatore di contenuti.
+Ti fornisco una trascrizione grezza di un video, con timestamp.
+Il tuo compito e segmentare questa trascrizione in sezioni logiche (slide/argomenti).
 
-Rules:
-1. Group sentences that belong to the same topic or visual context.
-2. Provide a short title for each section.
-3. Use the provided timestamps; start_time must be the first segment start, end_time the last segment end.
-4. Output MUST be valid JSON in the following format:
+Regole:
+1. Raggruppa le frasi che appartengono allo stesso argomento o contesto visivo.
+2. Fornisci un titolo breve per ogni sezione (in italiano).
+3. Usa i timestamp forniti; start_time deve essere l'inizio del primo segmento, end_time la fine dell'ultimo.
+4. Il testo riassuntivo deve essere in italiano.
+5. L'output DEVE essere JSON valido nel seguente formato:
 {
   "sections": [
     {
-      "title": "Introduction",
+      "title": "Introduzione",
       "start_time": 0.0,
       "end_time": 15.5,
       "text": "..."
     }
   ]
 }
-Return ONLY raw JSON (no markdown).
+Restituisci SOLO JSON grezzo (no markdown).
 """.strip()
 
-        try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=[prompt, full_transcript],
-                config=types.GenerateContentConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                    response_schema={
+        for attempt in range(5):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=[prompt, full_transcript],
+                    config=types.GenerateContentConfig(
+                        temperature=0.0,
+                        response_mime_type="application/json",
+                        response_schema={
+                            "type": "OBJECT",
+                            "properties": {
+                                "sections": {
+                                    "type": "ARRAY",
+                                    "items": {
+                                        "type": "OBJECT",
+                                        "properties": {
+                                            "title": {"type": "STRING"},
+                                            "start_time": {"type": "NUMBER"},
+                                            "end_time": {"type": "NUMBER"},
+                                            "text": {"type": "STRING"},
+                                        },
+                                        "required": [
+                                            "title",
+                                            "start_time",
+                                            "end_time",
+                                            "text",
+                                        ],
+                                    },
+                                }
+                            },
+                            "required": ["sections"],
+                        },
+                    ),
+                )
+
+                if response.text:
+                    return response.text
+                return json.dumps(response.parsed or {"sections": []})
+            except Exception as e:
+                msg = str(e)
+                wait = 60
+                m = re.search(r'retry in (\d+)s', msg)
+                if m:
+                    wait = int(m.group(1)) + 5
+                if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                    print(f"  Gemini rate limit. Waiting {wait}s before retry ({attempt+1}/5)...")
+                    time.sleep(wait)
+                else:
+                    print(f"Error during segmentation: {e}")
+                    return '{"sections": []}'
+        print("Gemini rate limit exceeded after 5 retries.")
+        return '{"sections": []}'
+
+    def _get_video_duration(self, video_path: str) -> float:
+        result = subprocess.check_output([
+            "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+            "-of", "csv=p=0", video_path
+        ])
+        return float(result.decode().strip())
+
+    def _upload_and_wait(self, video_path: str, label: str) -> types.File:
+        size_mb = os.path.getsize(video_path) / 1024 / 1024
+        print(f"Uploading {label} ({size_mb:.0f} MB)...")
+        file = self.client.files.upload(
+            file=video_path,
+            config=types.UploadFileConfig(
+                mime_type="video/mp4",
+                display_name=os.path.basename(video_path),
+            ),
+        )
+        print(f"Waiting for processing...", end="", flush=True)
+        while file.state.name == "PROCESSING":
+            time.sleep(5)
+            print(".", end="", flush=True)
+            file = self.client.files.get(name=file.name)
+        print()
+        if file.state.name != "ACTIVE":
+            raise RuntimeError(f"Video processing failed: {file.state.name}")
+        return file
+
+    def _analyze_chunk(self, file: types.File, offset: float, max_sections: int) -> List[Dict]:
+        schema: Dict[str, Any] = {
+            "type": "OBJECT",
+            "properties": {
+                "sections": {
+                    "type": "ARRAY",
+                    "items": {
                         "type": "OBJECT",
                         "properties": {
-                            "sections": {
+                            "title": {"type": "STRING"},
+                            "start_time": {"type": "NUMBER"},
+                            "end_time": {"type": "NUMBER"},
+                            "text": {"type": "STRING"},
+                            "keyframe_time": {"type": "NUMBER"},
+                            "tasks": {
                                 "type": "ARRAY",
                                 "items": {
                                     "type": "OBJECT",
                                     "properties": {
-                                        "title": {"type": "STRING"},
-                                        "start_time": {"type": "NUMBER"},
-                                        "end_time": {"type": "NUMBER"},
-                                        "text": {"type": "STRING"},
+                                        "description": {"type": "STRING"},
+                                        "assignee": {"type": "STRING"},
+                                        "priority": {"type": "STRING"},
                                     },
-                                    "required": [
-                                        "title",
-                                        "start_time",
-                                        "end_time",
-                                        "text",
-                                    ],
+                                    "required": ["description"],
                                 },
-                            }
+                            },
                         },
-                        "required": ["sections"],
+                        "required": ["title", "start_time", "end_time", "text", "keyframe_time"],
                     },
-                ),
-            )
+                }
+            },
+            "required": ["sections"],
+        }
 
-            if response.text:
-                return response.text
-            return json.dumps(response.parsed or {"sections": []})
+        offset_note = f"NOTA: i timestamp in questo clip partono da 0s ma corrispondono a {offset:.0f}s nel video completo. Aggiungi {offset:.0f} a tutti i timestamp." if offset > 0 else ""
+        prompt = f"""Sei un esperto analista di video educativi e riunioni stand-up.
+Analizza questo video clip e identifica fino a {max_sections} sezioni o argomenti logici.
+{offset_note}
+
+Per ogni sezione fornisci:
+- title: titolo breve e descrittivo (max 8 parole, in italiano)
+- start_time: timestamp in secondi NEL VIDEO COMPLETO (aggiungi {offset:.0f}s di offset)
+- end_time: timestamp in secondi NEL VIDEO COMPLETO (aggiungi {offset:.0f}s di offset)
+- text: riassunto del contenuto in 2-3 frasi in italiano
+- keyframe_time: miglior timestamp NEL VIDEO COMPLETO per uno screenshot
+- tasks: array di task/azioni menzionate nella sezione. Per ogni task:
+  - description: descrizione dell'attivita o azione da svolgere (in italiano)
+  - assignee: persona a cui e assegnata (se menzionata, altrimenti stringa vuota)
+  - priority: "alta", "media", "bassa" (se deducibile dal contesto, altrimenti "media")
+  Se non ci sono task nella sezione, usa un array vuoto [].
+
+Presta particolare attenzione a:
+- Assegnazioni di lavoro ("io faccio...", "tu ti occupi di...", "bisogna fare...")
+- Scadenze e deadline menzionate
+- Problemi da risolvere e chi se ne occupa
+- Decisioni prese durante la riunione
+
+Restituisci SOLO JSON valido."""
+
+        for attempt in range(3):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=[
+                        types.Part.from_uri(file_uri=file.uri, mime_type="video/mp4"),
+                        prompt,
+                    ],
+                    config=types.GenerateContentConfig(
+                        temperature=0.0,
+                        response_mime_type="application/json",
+                        response_schema=schema,
+                        max_output_tokens=8192,
+                    ),
+                )
+                parsed = (
+                    response.parsed
+                    if response.parsed is not None
+                    else json.loads(response.text)
+                )
+                return parsed.get("sections", [])
+            except json.JSONDecodeError as e:
+                print(f"  JSON parse error (attempt {attempt+1}/3): {e}")
+                if attempt < 2:
+                    time.sleep(5)
+            except Exception as e:
+                msg = str(e)
+                if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                    wait = 60
+                    m = re.search(r'retry in (\d+)s', msg)
+                    if m:
+                        wait = int(m.group(1)) + 5
+                    print(f"  Rate limit (attempt {attempt+1}/3). Waiting {wait}s...")
+                    time.sleep(wait)
+                else:
+                    raise
+        return []
+
+    def _count_tokens_for_file(self, file: types.File) -> int:
+        """Count tokens for an uploaded file. Returns 0 on error."""
+        try:
+            resp = self.client.models.count_tokens(
+                model=self.model_name,
+                contents=[
+                    types.Part.from_uri(file_uri=file.uri, mime_type="video/mp4"),
+                    "Analizza questo video.",
+                ],
+            )
+            return resp.total_tokens
         except Exception as e:
-            print(f"Error during segmentation: {e}")
-            return '{"sections": []}'
+            print(f"  Token count unavailable: {e}")
+            return 0
+
+    def upload_and_analyze_video(self, video_path: str, max_sections: int = 40) -> dict:
+        """Upload video to Gemini Files API. Auto-chunks videos > 28 min to stay under 1M token limit.
+        Returns dict with 'sections' list and 'cost_info' dict."""
+        duration = self._get_video_duration(video_path)
+        print(f"Video duration: {duration/60:.1f} min")
+        total_tokens = 0
+        _PRICE_PER_M = 0.075  # USD per 1M input tokens (Gemini Flash)
+
+        if duration <= _MAX_CHUNK_SECONDS:
+            # Single chunk
+            file = self._upload_and_wait(video_path, os.path.basename(video_path))
+            tokens = self._count_tokens_for_file(file)
+            total_tokens += tokens
+            if tokens:
+                cost = (tokens / 1_000_000) * _PRICE_PER_M
+                print(f"  Token stimati: {tokens:,} (~${cost:.4f} USD)")
+            print(f"Analyzing with {self.model_name}...")
+            try:
+                sections = self._analyze_chunk(file, offset=0.0, max_sections=max_sections)
+                print(f"Gemini returned {len(sections)} sections.")
+                cost_info = {"total_tokens": total_tokens, "estimated_cost_usd": (total_tokens / 1_000_000) * _PRICE_PER_M, "model": self.model_name}
+                return {"sections": sections, "cost_info": cost_info}
+            except Exception as e:
+                print(f"Error analyzing video: {e}")
+                return {"sections": [], "cost_info": {}}
+            finally:
+                try:
+                    self.client.files.delete(name=file.name)
+                    print("Cleaned up uploaded file.")
+                except Exception:
+                    pass
+        else:
+            # Multi-chunk: split with ffmpeg
+            n_chunks = math.ceil(duration / _MAX_CHUNK_SECONDS)
+            chunk_dur = duration / n_chunks
+            sections_per_chunk = max(10, max_sections // n_chunks)
+            print(f"Video too long ({duration/60:.1f} min). Splitting into {n_chunks} chunks of ~{chunk_dur/60:.1f} min each.")
+
+            all_sections: List[Dict] = []
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                for i in range(n_chunks):
+                    start = i * chunk_dur
+                    chunk_path = os.path.join(tmpdir, f"chunk_{i:02d}.mp4")
+                    subprocess.run([
+                        "ffmpeg", "-y", "-ss", str(start), "-t", str(chunk_dur),
+                        "-i", video_path, "-c", "copy", chunk_path
+                    ], check=True, capture_output=True)
+
+                    print(f"\n--- Chunk {i+1}/{n_chunks} ({start/60:.1f}min - {(start+chunk_dur)/60:.1f}min) ---")
+                    file = self._upload_and_wait(chunk_path, f"chunk {i+1}/{n_chunks}")
+                    tokens = self._count_tokens_for_file(file)
+                    total_tokens += tokens
+                    if tokens:
+                        cost = (tokens / 1_000_000) * _PRICE_PER_M
+                        print(f"  Token stimati chunk {i+1}: {tokens:,} (~${cost:.4f} USD)")
+                    print(f"Analyzing chunk {i+1} with {self.model_name}...")
+                    try:
+                        chunk_sections = self._analyze_chunk(file, offset=start, max_sections=sections_per_chunk)
+                        print(f"  Got {len(chunk_sections)} sections from chunk {i+1}.")
+                        all_sections.extend(chunk_sections)
+                    except Exception as e:
+                        print(f"  Error analyzing chunk {i+1}: {e}")
+                    finally:
+                        try:
+                            self.client.files.delete(name=file.name)
+                        except Exception:
+                            pass
+
+            # Sort by start_time
+            all_sections.sort(key=lambda s: s.get("start_time", 0))
+            total_cost = (total_tokens / 1_000_000) * _PRICE_PER_M
+            print(f"\nTotal sections: {len(all_sections)} | Token totali: {total_tokens:,} | Costo stimato: ${total_cost:.4f} USD")
+            cost_info = {"total_tokens": total_tokens, "estimated_cost_usd": total_cost, "model": self.model_name}
+            return {"sections": all_sections, "cost_info": cost_info}
 
     def supports_video_timeline(self) -> bool:
         return True
@@ -239,7 +476,7 @@ Return ONLY JSON.
         try:
             media_resolution = getattr(types.PartMediaResolutionLevel, resolution)
         except Exception:
-            media_resolution = types.PartMediaResolutionLevel.LOW
+            media_resolution = types.PartMediaResolutionLevel.MEDIA_RESOLUTION_LOW
 
         try:
             response = self.client.models.generate_content(

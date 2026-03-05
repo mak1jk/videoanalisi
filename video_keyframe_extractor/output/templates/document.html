@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }} - Video Summary</title>
+    <title>{{ title }} - Riepilogo Video</title>
     <link rel="stylesheet" href="{{ css_path }}">
 </head>
 
@@ -13,6 +13,17 @@
         <header>
             <h1>{{ title }}</h1>
             <p class="meta">Analisi generata automaticamente da Video Keyframe Extractor</p>
+            {% if cost_info and cost_info.total_tokens %}
+            <p class="cost-info">
+                Token: {{ "{:,}".format(cost_info.total_tokens) }} |
+                Costo stimato: ${{ "%.4f"|format(cost_info.estimated_cost_usd) }} USD |
+                Modello: {{ cost_info.model }}
+            </p>
+            {% endif %}
+            <div class="video-path-input">
+                <label for="video-path">Path video:</label>
+                <input type="text" id="video-path" value="{{ video_path }}">
+            </div>
         </header>
 
         {% for seg in segments %}
@@ -29,13 +40,40 @@
 
                 <div class="visual-content">
                     {% if seg.keyframe and seg.keyframe.relative_path %}
-                    <img src="{{ seg.keyframe.relative_path }}" alt="Keyframe for {{ seg.title }}" class="keyframe-img"
-                        onclick="openLightbox(this.src)">
+                    <div class="keyframe-wrapper">
+                        <img src="{{ seg.keyframe.relative_path }}" alt="Keyframe per {{ seg.title }}" class="keyframe-img"
+                            onclick="openLightbox(this.src)">
+                        <button class="play-btn" onclick="event.stopPropagation(); playSegment({{ seg.start }}, {{ seg.end }})" title="Riproduci segmento">&#9654;</button>
+                    </div>
                     {% else %}
-                    <div class="no-image">Nessun frame rilevante selezionato</div>
+                    <div class="no-image">
+                        <button class="play-btn-standalone" onclick="playSegment({{ seg.start }}, {{ seg.end }})" title="Riproduci segmento">&#9654; Riproduci</button>
+                    </div>
                     {% endif %}
                 </div>
             </div>
+
+            {% if seg.tasks %}
+            <div class="tasks-section">
+                <h3 class="tasks-title">Task e Azioni</h3>
+                {% for task in seg.tasks %}
+                <div class="task-item task-priority-{{ task.priority|default('media') }}">
+                    <span class="task-description">{{ task.description }}</span>
+                    {% if task.assignee %}<span class="task-assignee">{{ task.assignee }}</span>{% endif %}
+                    <span class="task-priority-badge">{{ task.priority|default('media') }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if seg.transcript %}
+            <div class="transcript-toggle" onclick="toggleTranscript(this)">
+                <span class="toggle-icon">&#9654;</span> Trascrizione completa
+            </div>
+            <div class="transcript-content" style="display: none;">
+                {{ seg.transcript }}
+            </div>
+            {% endif %}
         </section>
         {% endfor %}
     </div>
@@ -44,10 +82,75 @@
         <img id="lightbox-img" src="">
     </div>
 
+    <div class="video-lightbox" id="video-lightbox" onclick="if(event.target===this)closeVideo()">
+        <div class="video-lightbox-inner">
+            <video id="video-player" controls></video>
+            <button class="video-close-btn" onclick="closeVideo()">&times;</button>
+        </div>
+    </div>
+
     <script>
         function openLightbox(src) {
             document.getElementById('lightbox-img').src = src;
             document.getElementById('lightbox').style.display = 'flex';
+        }
+
+        function toggleTranscript(el) {
+            var content = el.nextElementSibling;
+            var icon = el.querySelector('.toggle-icon');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.innerHTML = '&#9660;';
+            } else {
+                content.style.display = 'none';
+                icon.innerHTML = '&#9654;';
+            }
+        }
+
+        var _segEnd = 0;
+        var _currentVideoSrc = '';
+
+        function playSegment(start, end) {
+            var url = document.getElementById('video-path').value.trim();
+            if (!url) {
+                alert('Inserisci il path del file video nel campo in alto.');
+                return;
+            }
+            _segEnd = end;
+            var player = document.getElementById('video-player');
+            document.getElementById('video-lightbox').style.display = 'flex';
+
+            // Reuse source if same video, just seek
+            if (_currentVideoSrc === url && player.readyState >= 1) {
+                player.currentTime = start;
+                player.ontimeupdate = handleTimeUpdate;
+                player.play().catch(function(){});
+                return;
+            }
+
+            _currentVideoSrc = url;
+            player.src = url;
+
+            player.onloadedmetadata = function() {
+                player.currentTime = start;
+                player.ontimeupdate = handleTimeUpdate;
+                player.play().catch(function(){});
+            };
+            player.load();
+        }
+
+        function handleTimeUpdate() {
+            var player = document.getElementById('video-player');
+            if (player.currentTime >= _segEnd) {
+                player.pause();
+            }
+        }
+
+        function closeVideo() {
+            var player = document.getElementById('video-player');
+            player.pause();
+            player.ontimeupdate = null;
+            document.getElementById('video-lightbox').style.display = 'none';
         }
     </script>
 </body>
