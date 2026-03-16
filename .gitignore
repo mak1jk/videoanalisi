@@ -16,8 +16,7 @@ temp_processing/
 *.zip
 
 # Logs
-app.log
-app_startup.log
+*.log
 
 # Videos
 *.mp4
