@@ -14,6 +14,40 @@ from ..vlm_providers.base import VLMProvider
 from ..config import Config
 
 
+def _build_transcriber(prefer: str = None):
+    """
+    Build a transcriber based on preference and available resources.
+
+    prefer: "groq" | "local" | None (auto-detect)
+    """
+    backend = prefer or Config.TRANSCRIBER or ("groq" if Config.GROQ_API_KEY else "local")
+
+    if backend == "groq":
+        if not Config.GROQ_API_KEY:
+            raise RuntimeError(
+                "GROQ_API_KEY is not set. Cannot use '--transcriber groq'.\n"
+                "Set GROQ_API_KEY in your .env file or switch to '--transcriber local'."
+            )
+        print("Transcriber: Groq Whisper API")
+        return GroqTranscriber(api_key=Config.GROQ_API_KEY)
+
+    if backend == "local":
+        try:
+            from .local_whisper_provider import LocalWhisperTranscriber  # noqa
+            print("Transcriber: faster-whisper (local, no API key required)")
+            return LocalWhisperTranscriber()
+        except ImportError:
+            raise ImportError(
+                "faster-whisper is not installed.\n"
+                "Install it with: pip install faster-whisper\n"
+                "Or use '--transcriber groq' with a valid GROQ_API_KEY."
+            )
+
+    # Fallback: openai-whisper (legacy)
+    print("Transcriber: openai-whisper (legacy local)")
+    return Transcriber()
+
+
 class FrameSelectorOrchestrator:
     def __init__(self, vlm_provider: VLMProvider, fast_mode: bool = False):
         self.vlm_provider = vlm_provider
@@ -21,17 +55,13 @@ class FrameSelectorOrchestrator:
         self.frame_sampler = FrameSampler()
         self.audio_extractor = AudioExtractor()
 
-        # Groq transcriber available in both modes
+        # Groq transcriber available in both modes (for fast path)
         self.groq_transcriber = None
-        if Config.GROQ_API_KEY:
+        if Config.GROQ_API_KEY and (not Config.TRANSCRIBER or Config.TRANSCRIBER == "groq"):
             self.groq_transcriber = GroqTranscriber(api_key=Config.GROQ_API_KEY)
 
         if not fast_mode:
-            if self.groq_transcriber:
-                print("Using Groq Whisper transcriber (fast API)")
-                self.transcriber = self.groq_transcriber
-            else:
-                self.transcriber = Transcriber()
+            self.transcriber = _build_transcriber()
             self.scene_detector = SceneDetector()
             self.embeddings_model = EmbeddingsModel()
             self.candidate_selector = CandidateSelector(

@@ -119,6 +119,9 @@ def _apply_runtime_config(args: argparse.Namespace) -> None:
         Config.VIDEO_NATIVE_ENABLED = args.video_native
         os.environ["VIDEO_NATIVE_ENABLED"] = "true" if args.video_native else "false"
 
+    if hasattr(args, "transcriber") and args.transcriber:
+        Config.TRANSCRIBER = args.transcriber
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Video Keyframe Extractor CLI")
@@ -160,6 +163,17 @@ def main() -> None:
         dest="fast",
         action="store_false",
         help="Disable fast mode, use full local pipeline (Whisper + CLIP)",
+    )
+
+    parser.add_argument(
+        "--transcriber",
+        choices=["groq", "local"],
+        default=None,
+        help=(
+            "Transcription backend: 'groq' uses Groq Whisper API (requires GROQ_API_KEY), "
+            "'local' uses faster-whisper offline (requires: pip install faster-whisper). "
+            "Default: groq if GROQ_API_KEY is set, else local."
+        ),
     )
 
     parser.add_argument(

@@ -25,6 +25,10 @@ yt-dlp
 # UI
 gradio
 
+# Optional: local transcription (no API key required)
+# Install with: pip install faster-whisper
+# faster-whisper
+
 # Utils
 jinja2
 Pillow

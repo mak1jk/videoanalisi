@@ -94,6 +94,14 @@ VIDEO_CHUNK_OVERLAP_SECONDS=15
 VIDEO_TIMELINE_MAX_EVENTS=60
 VIDEO_MEDIA_RESOLUTION=LOW
 
+# === Trascrizione ===
+# Backend per la trascrizione audio (groq | local | lascia vuoto per auto-detect)
+# "groq"  → Groq Whisper API (veloce, richiede GROQ_API_KEY)
+# "local" → faster-whisper locale (offline, nessuna API key, richiede: pip install faster-whisper)
+# Se non impostato: usa "groq" se GROQ_API_KEY è presente, altrimenti "local"
+# TRANSCRIBER=local
+GROQ_API_KEY=your_groq_api_key_here
+
 # === Pipeline legacy ===
 FRAME_SAMPLE_RATE=1
 CLIP_SIMILARITY_THRESHOLD=0.90
@@ -126,7 +134,26 @@ python cli.py path/to/video.mp4 --use-vertex-ai --gcs-bucket YOUR_BUCKET --gcp-p
 
 # Video da URL (YouTube o direct) -> download automatico
 python cli.py --video-url "https://www.youtube.com/watch?v=..." --use-vertex-ai --gcs-bucket YOUR_BUCKET --gcp-project YOUR_PROJECT
+
+# Usa trascrizione locale offline (faster-whisper, nessuna API key)
+python cli.py path/to/video.mp4 --no-fast --transcriber local
+
+# Usa trascrizione Groq (richiede GROQ_API_KEY)
+python cli.py path/to/video.mp4 --no-fast --transcriber groq
 ```
+
+### Trascrizione locale (offline)
+
+Per usare la trascrizione offline senza API key:
+
+```bash
+pip install faster-whisper
+python cli.py path/to/video.mp4 --no-fast --transcriber local
+```
+
+`faster-whisper` è un'implementazione ottimizzata di Whisper basata su CTranslate2.
+Funziona su CPU e GPU, non richiede connessione Internet né API key.
+Se non è installato e si usa `--transcriber local`, il programma mostrerà un messaggio di errore chiaro con le istruzioni per l'installazione.
 
 ### Come Libreria Python
 

@@ -48,6 +48,9 @@ class Config:
     CLIP_SIMILARITY_THRESHOLD = 0.90
     MIN_SEGMENT_DURATION = 30.0  # seconds (for VLM context)
 
+    # Transcription backend: "groq", "local", or None (auto-detect)
+    TRANSCRIBER = os.getenv("TRANSCRIBER")  # groq | local | None
+
     # Paths
     OUTPUT_DIR = "output_documents"
     TEMP_DIR = "temp_processing"
