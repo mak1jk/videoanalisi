@@ -142,6 +142,23 @@ python cli.py path/to/video.mp4 --no-fast --transcriber local
 python cli.py path/to/video.mp4 --no-fast --transcriber groq
 ```
 
+### Semantic Search
+
+Dopo aver generato un report HTML, puoi interrogare offline il file `data.json` prodotto nella cartella output.
+La query viene codificata localmente con `EmbeddingsModel` e confrontata con le sezioni del report usando cosine similarity.
+
+```bash
+python cli.py --output-json output_documents/nome_progetto/data.json --query "cosa fa il personaggio a 2:30"
+```
+
+Output atteso:
+- top-3 sezioni ordinate per rilevanza
+- timestamp di inizio/fine
+- score di similarità
+- trascritto della sezione
+
+La ricerca semantica funziona offline: usa solo embedding locali e non effettua chiamate API.
+
 ### Trascrizione locale (offline)
 
 Per usare la trascrizione offline senza API key:

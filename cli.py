@@ -9,6 +9,7 @@ import webbrowser
 from video_keyframe_extractor.config import Config
 from video_keyframe_extractor.core.orchestrator import FrameSelectorOrchestrator
 from video_keyframe_extractor.output.html_generator import HTMLGenerator
+from video_keyframe_extractor.core.semantic_search import semantic_search_sections
 from video_keyframe_extractor.utils.download_utils import download_video_url
 from video_keyframe_extractor.vlm_providers.gemini_provider import GeminiProvider
 
@@ -183,6 +184,16 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "--output-json",
+        help="Path to a previously generated data.json file. Required with --query.",
+    )
+
+    parser.add_argument(
+        "--query",
+        help="Run offline semantic search on a previously generated data.json and print the top 3 relevant sections.",
+    )
+
+    parser.add_argument(
         "--serve",
         nargs="?",
         const=8080,
@@ -192,6 +203,26 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    if args.query:
+        if not args.output_json:
+            parser.error("--query requires --output-json path/to/data.json")
+        try:
+            matches = semantic_search_sections(args.output_json, args.query, top_k=3)
+        except Exception as exc:
+            print(f"❌ Semantic search error: {exc}")
+            return
+
+        print(f"\n🔎 Semantic Search: {args.query}")
+        print(f"Source: {args.output_json}")
+        for idx, match in enumerate(matches, start=1):
+            excerpt = " ".join((match.get("transcript") or "").split())
+            print(f"\n[{idx}] {match['title']}")
+            print(
+                f"Timestamp: {match['start']:.1f}s - {match['end']:.1f}s | Score: {match['score']:.4f}"
+            )
+            print(f"Transcript: {excerpt}")
+        return
 
     # Regenerate mode: re-render from cached data.json
     if args.regenerate:
