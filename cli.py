@@ -14,6 +14,49 @@ from video_keyframe_extractor.utils.download_utils import download_video_url
 from video_keyframe_extractor.vlm_providers.gemini_provider import GeminiProvider
 
 
+def _parse_range_header(range_header: str, file_size: int):
+    """Parse a single HTTP bytes range.
+
+    Returns a ``(start, end)`` tuple for supported single ranges or ``None`` when
+    the header is missing/invalid and the caller should fall back to the default
+    ``SimpleHTTPRequestHandler`` behavior.
+    """
+    if not range_header or not range_header.startswith("bytes="):
+        return None
+
+    range_spec = range_header[len("bytes=") :].strip()
+    if not range_spec or "," in range_spec:
+        return None
+
+    parts = range_spec.split("-", 1)
+    if len(parts) != 2:
+        return None
+
+    start_text, end_text = parts
+    if not start_text and not end_text:
+        return None
+
+    try:
+        if not start_text:
+            suffix_length = int(end_text)
+            if suffix_length <= 0:
+                return None
+            start = max(file_size - suffix_length, 0)
+            end = file_size - 1
+        else:
+            start = int(start_text)
+            if start < 0 or start >= file_size:
+                return None
+            end = int(end_text) if end_text else file_size - 1
+            if end < start:
+                return None
+            end = min(end, file_size - 1)
+    except ValueError:
+        return None
+
+    return start, end
+
+
 class _RangeHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP handler with Range request support for video seeking."""
 
@@ -26,17 +69,13 @@ class _RangeHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if range_header is None:
             return super().send_head()
 
-        # Parse Range: bytes=START-END
-        try:
-            range_spec = range_header.replace("bytes=", "")
-            parts = range_spec.split("-")
-            file_size = os.path.getsize(path)
-            start = int(parts[0]) if parts[0] else 0
-            end = int(parts[1]) if parts[1] else file_size - 1
-            end = min(end, file_size - 1)
-            length = end - start + 1
-        except (ValueError, IndexError):
+        file_size = os.path.getsize(path)
+        parsed_range = _parse_range_header(range_header, file_size)
+        if parsed_range is None:
             return super().send_head()
+
+        start, end = parsed_range
+        length = end - start + 1
 
         ctype = self.guess_type(path)
         try:
