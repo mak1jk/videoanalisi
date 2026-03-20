@@ -289,11 +289,19 @@ Video Input
 
 ## ✅ Test
 
-Esegui la suite minima di regressione:
+Esegui la suite minima di regressione compatibile con la CI:
 
 ```bash
-./venv/bin/python -m unittest discover -s tests -v
+python -m pytest \
+  tests/test_cli_range_handler.py \
+  tests/test_frame_sampler.py \
+  tests/test_html_generator.py \
+  tests/test_openrouter_provider.py \
+  -q
 ```
+
+Nota CI: `requirements.txt` installa anche dipendenze pesanti per la pipeline completa.
+La pipeline GitHub Actions usa comunque questo comando esplicito di regressione e installa anche `ffmpeg`, `libgl1` e `libglib2.0-0` sul runner Ubuntu, necessari per i test che importano OpenCV.
 
 ## 🐛 Troubleshooting
 
