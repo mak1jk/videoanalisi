@@ -126,6 +126,12 @@ Apri il browser all'indirizzo mostrato (di solito `http://127.0.0.1:7860`).
 
 Puoi caricare un file locale oppure fornire un URL (YouTube/direct).
 
+### Backend API opzionali
+
+- **Gemini / Vertex AI**: percorso principale consigliato per analisi video e selezione frame.
+- **OpenRouter**: opzionale per accesso multi-modello dove previsto dal progetto.
+- **Groq**: opzionale per integrazioni di trascrizione/fallback compatibili con Groq Whisper. Se `GROQ_API_KEY` non è configurata, non selezionare un backend Groq: il percorso base del progetto continua a funzionare usando i provider già configurati (Gemini/Vertex, OpenAI, Anthropic o altri backend supportati).
+
 ### CLI (Command Line)
 
 ```bash

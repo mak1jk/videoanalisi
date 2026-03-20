@@ -19,6 +19,7 @@ google-genai
 google-cloud-storage
 anthropic
 openai
+groq
 
 yt-dlp
 
